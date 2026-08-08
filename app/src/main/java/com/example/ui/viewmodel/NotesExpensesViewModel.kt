@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import android.graphics.Bitmap
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -48,11 +49,26 @@ class NotesExpensesViewModel(application: Application) : AndroidViewModel(applic
     val archivedNotes: StateFlow<List<NoteItem>> = notesRepository.archivedNotesFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val trashNotes: StateFlow<List<NoteItem>> = notesRepository.trashNotesFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     val budgets: StateFlow<List<BudgetItem>> = budgetRepository.budgetsFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val categories: StateFlow<List<CategoryItem>> = categoryRepository.categoriesFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // Theme & App Settings
+    private val _themeMode = MutableStateFlow("SYSTEM") // LIGHT, DARK, SYSTEM
+    val themeMode: StateFlow<String> = _themeMode.asStateFlow()
+
+    private val _fontSizeOption = MutableStateFlow("MEDIUM") // SMALL, MEDIUM, LARGE
+    val fontSizeOption: StateFlow<String> = _fontSizeOption.asStateFlow()
+
+    private val _sortOption = MutableStateFlow(NoteSortOption.NEWEST)
+    val sortOption: StateFlow<NoteSortOption> = _sortOption.asStateFlow()
+
+    private var lastDeletedNote: NoteItem? = null
 
     // AI Chat & Voice State
     private val _aiChatMessages = MutableStateFlow<List<ChatMessage>>(
@@ -114,7 +130,12 @@ class NotesExpensesViewModel(application: Application) : AndroidViewModel(applic
         sendAiChatMessage(command)
     }
 
-    fun sendAiChatMessage(userPrompt: String) {
+    fun sendAiChatMessage(
+        userPrompt: String,
+        enableSearchGrounding: Boolean = false,
+        enableMapsGrounding: Boolean = false,
+        enableHighThinking: Boolean = false
+    ) {
         if (userPrompt.isBlank()) return
 
         currentStreamJob?.cancel()
@@ -140,7 +161,10 @@ class NotesExpensesViewModel(application: Application) : AndroidViewModel(applic
                 aiRepository.streamChatResponse(
                     userPrompt = userPrompt,
                     notes = allNotes.value,
-                    budgets = budgets.value
+                    budgets = budgets.value,
+                    enableSearchGrounding = enableSearchGrounding,
+                    enableMapsGrounding = enableMapsGrounding,
+                    enableHighThinking = enableHighThinking
                 ).collect { chunk ->
                     val updatedList = _aiChatMessages.value.map { msg ->
                         if (msg.id == aiMsgId) {
@@ -303,11 +327,31 @@ class NotesExpensesViewModel(application: Application) : AndroidViewModel(applic
         }
     }
 
+    fun setThemeMode(mode: String) {
+        _themeMode.value = mode
+    }
+
+    fun setFontSizeOption(size: String) {
+        _fontSizeOption.value = size
+    }
+
+    fun setSortOption(sort: NoteSortOption) {
+        _sortOption.value = sort
+    }
+
+    fun saveNoteItem(note: NoteItem) {
+        viewModelScope.launch {
+            notesRepository.saveNote(note)
+            _snackbarMessage.emit("Note saved")
+            evaluateAutomationRules()
+        }
+    }
+
     // Add note via natural language or parser
     fun addNoteFromRawText(rawText: String) {
         viewModelScope.launch {
             val note = notesRepository.parseAndAddNote(rawText)
-            _snackbarMessage.emit("Added ${note.category}: ${userSession.value.currencySymbol}${note.amount}")
+            _snackbarMessage.emit("Added note under ${note.category}")
             evaluateAutomationRules()
         }
     }
@@ -336,10 +380,60 @@ class NotesExpensesViewModel(application: Application) : AndroidViewModel(applic
         }
     }
 
-    fun deleteNote(noteId: String) {
+    fun deleteNote(note: NoteItem) {
         viewModelScope.launch {
-            notesRepository.deleteNote(noteId)
-            _snackbarMessage.emit("Note deleted")
+            lastDeletedNote = note
+            notesRepository.moveToTrash(note.id)
+            _snackbarMessage.emit("Moved note to Trash")
+        }
+    }
+
+    fun undoDeleteNote() {
+        val noteToRestore = lastDeletedNote ?: return
+        viewModelScope.launch {
+            notesRepository.restoreFromTrash(noteToRestore.id)
+            lastDeletedNote = null
+            _snackbarMessage.emit("Restored note: ${noteToRestore.title.ifBlank { noteToRestore.rawText.take(15) }}")
+        }
+    }
+
+    fun restoreFromTrash(noteId: String) {
+        viewModelScope.launch {
+            notesRepository.restoreFromTrash(noteId)
+            _snackbarMessage.emit("Restored note from Trash")
+        }
+    }
+
+    fun deleteNotePermanently(noteId: String) {
+        viewModelScope.launch {
+            notesRepository.deleteNotePermanently(noteId)
+            _snackbarMessage.emit("Note permanently deleted")
+        }
+    }
+
+    fun emptyTrash() {
+        viewModelScope.launch {
+            notesRepository.emptyTrash()
+            _snackbarMessage.emit("Trash emptied")
+        }
+    }
+
+    fun shareNoteText(context: Context, note: NoteItem) {
+        try {
+            val titleStr = if (note.title.isNotBlank()) "${note.title}\n\n" else ""
+            val contentStr = if (note.isChecklist) {
+                note.checklistItems.joinToString("\n") { "${if (it.isDone) "✓ " else "☐ "}${it.text}" }
+            } else note.rawText
+
+            val shareBody = "$titleStr$contentStr\n\nCategory: ${note.category}"
+            val sendIntent = Intent().apply {
+                action = Intent.ACTION_SEND
+                putExtra(Intent.EXTRA_TEXT, shareBody)
+                type = "text/plain"
+            }
+            context.startActivity(Intent.createChooser(sendIntent, "Share Note"))
+        } catch (e: Exception) {
+            viewModelScope.launch { _snackbarMessage.emit("Error sharing note") }
         }
     }
 

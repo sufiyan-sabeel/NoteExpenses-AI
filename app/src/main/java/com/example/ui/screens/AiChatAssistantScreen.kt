@@ -46,6 +46,10 @@ fun AiChatAssistantScreen(
     var inputText by remember { mutableStateOf("") }
     var showAiSettingsModal by remember { mutableStateOf(false) }
 
+    var isSearchGroundingEnabled by remember { mutableStateOf(false) }
+    var isMapsGroundingEnabled by remember { mutableStateOf(false) }
+    var isHighThinkingEnabled by remember { mutableStateOf(false) }
+
     val listState = rememberLazyListState()
 
     // Scroll to latest message on new message
@@ -201,7 +205,42 @@ fun AiChatAssistantScreen(
                 }
             }
 
-            // Quick Prompt Chips Row (Read expenses, Create expenses, Analyze budget, Monthly report, Reminders)
+            // Grounding & AI Mode Selection Chips Row
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                FilterChip(
+                    selected = isSearchGroundingEnabled,
+                    onClick = {
+                        isSearchGroundingEnabled = !isSearchGroundingEnabled
+                        if (isSearchGroundingEnabled) isMapsGroundingEnabled = false
+                    },
+                    label = { Text("🌐 Search Grounding", style = MaterialTheme.typography.labelSmall) },
+                    modifier = Modifier.testTag("search_grounding_chip")
+                )
+
+                FilterChip(
+                    selected = isMapsGroundingEnabled,
+                    onClick = {
+                        isMapsGroundingEnabled = !isMapsGroundingEnabled
+                        if (isMapsGroundingEnabled) isSearchGroundingEnabled = false
+                    },
+                    label = { Text("📍 Maps Grounding", style = MaterialTheme.typography.labelSmall) },
+                    modifier = Modifier.testTag("maps_grounding_chip")
+                )
+
+                FilterChip(
+                    selected = isHighThinkingEnabled,
+                    onClick = { isHighThinkingEnabled = !isHighThinkingEnabled },
+                    label = { Text("🧠 High Thinking", style = MaterialTheme.typography.labelSmall) },
+                    modifier = Modifier.testTag("high_thinking_chip")
+                )
+            }
+
+            // Quick Prompt Chips Row
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -222,7 +261,12 @@ fun AiChatAssistantScreen(
                             if (suggestion == "Scan receipt") {
                                 imagePickerLauncher.launch("image/*")
                             } else {
-                                viewModel.sendAiChatMessage(suggestion)
+                                viewModel.sendAiChatMessage(
+                                    userPrompt = suggestion,
+                                    enableSearchGrounding = isSearchGroundingEnabled,
+                                    enableMapsGrounding = isMapsGroundingEnabled,
+                                    enableHighThinking = isHighThinkingEnabled
+                                )
                             }
                         },
                         label = {
@@ -263,12 +307,25 @@ fun AiChatAssistantScreen(
                     OutlinedTextField(
                         value = inputText,
                         onValueChange = { inputText = it },
-                        placeholder = { Text("Ask Notes AI or type expense...") },
+                        placeholder = {
+                            val hint = when {
+                                isSearchGroundingEnabled -> "Search Grounding: Search market trends..."
+                                isMapsGroundingEnabled -> "Maps Grounding: Find places near me..."
+                                isHighThinkingEnabled -> "High Thinking: Ask complex finance questions..."
+                                else -> "Ask Notes AI or type expense..."
+                            }
+                            Text(hint, maxLines = 1)
+                        },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                         keyboardActions = KeyboardActions(onSend = {
                             if (inputText.isNotBlank()) {
-                                viewModel.sendAiChatMessage(inputText)
+                                viewModel.sendAiChatMessage(
+                                    userPrompt = inputText,
+                                    enableSearchGrounding = isSearchGroundingEnabled,
+                                    enableMapsGrounding = isMapsGroundingEnabled,
+                                    enableHighThinking = isHighThinkingEnabled
+                                )
                                 inputText = ""
                             }
                         }),
@@ -281,7 +338,12 @@ fun AiChatAssistantScreen(
                     IconButton(
                         onClick = {
                             if (inputText.isNotBlank()) {
-                                viewModel.sendAiChatMessage(inputText)
+                                viewModel.sendAiChatMessage(
+                                    userPrompt = inputText,
+                                    enableSearchGrounding = isSearchGroundingEnabled,
+                                    enableMapsGrounding = isMapsGroundingEnabled,
+                                    enableHighThinking = isHighThinkingEnabled
+                                )
                                 inputText = ""
                             }
                         },

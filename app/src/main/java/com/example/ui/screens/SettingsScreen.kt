@@ -6,10 +6,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -17,14 +19,17 @@ import androidx.compose.ui.unit.dp
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
+    currentThemeMode: String = "SYSTEM",
+    onThemeModeChange: (String) -> Unit,
+    currentFontSize: String = "MEDIUM",
+    onFontSizeChange: (String) -> Unit,
     currentCurrency: String = "₹",
     onCurrencyChange: (String) -> Unit,
-    onTriggerSupabaseSync: () -> Unit
+    onExportNotes: () -> Unit = {},
+    onImportNotes: () -> Unit = {}
 ) {
-    var isDarkMode by remember { mutableStateOf(false) }
-    var isDynamicColor by remember { mutableStateOf(true) }
-    var isSupabaseSync by remember { mutableStateOf(true) }
-    var isPinLock by remember { mutableStateOf(false) }
+    var showPrivacyDialog by remember { mutableStateOf(false) }
+    var showAboutDialog by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -36,15 +41,63 @@ fun SettingsScreen(
         Spacer(modifier = Modifier.height(16.dp))
 
         Text(
-            text = "Settings & Sync",
+            text = "Settings & Preferences",
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.ExtraBold
         )
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Appearance Section
-        Text(text = "Appearance", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        // Theme & Appearance Section
+        Text(text = "Appearance & Theme", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(text = "Theme Mode", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf("SYSTEM" to "System", "LIGHT" to "Light", "DARK" to "Dark").forEach { (code, label) ->
+                        FilterChip(
+                            selected = currentThemeMode == code,
+                            onClick = { onThemeModeChange(code) },
+                            label = { Text(label) },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+
+                HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+
+                Text(text = "Editor Font Size", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf("SMALL" to "Small", "MEDIUM" to "Medium", "LARGE" to "Large").forEach { (code, label) ->
+                        FilterChip(
+                            selected = currentFontSize == code,
+                            onClick = { onFontSizeChange(code) },
+                            label = { Text(label) },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Local Offline Data & Backup Section
+        Text(text = "Data Backup & Export", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(8.dp))
 
         Card(
@@ -58,33 +111,46 @@ fun SettingsScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Icon(Icons.Default.DarkMode, contentDescription = null)
-                        Text("Dark Mode", fontWeight = FontWeight.Medium)
+                    Column {
+                        Text("100% Offline & Private", fontWeight = FontWeight.Bold)
+                        Text("All notes stored securely on your device", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    Switch(checked = isDarkMode, onCheckedChange = { isDarkMode = it })
+                    Icon(Icons.Default.OfflinePin, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                 }
 
-                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Icon(Icons.Default.Palette, contentDescription = null)
-                        Text("Material You Dynamic Color", fontWeight = FontWeight.Medium)
+                    Button(
+                        onClick = onExportNotes,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(Icons.Default.FileDownload, contentDescription = null)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Export Notes")
                     }
-                    Switch(checked = isDynamicColor, onCheckedChange = { isDynamicColor = it })
+
+                    OutlinedButton(
+                        onClick = onImportNotes,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(Icons.Default.FileUpload, contentDescription = null)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Import Backup")
+                    }
                 }
             }
         }
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Currency & Regional Section
-        Text(text = "Currency & Regional", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        // Currency Section
+        Text(text = "Currency Symbol", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(8.dp))
 
         Card(
@@ -111,8 +177,8 @@ fun SettingsScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Supabase & Cloud Backup Section
-        Text(text = "Supabase Cloud Sync", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        // About & Support Section
+        Text(text = "About & Privacy", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(8.dp))
 
         Card(
@@ -120,62 +186,26 @@ fun SettingsScreen(
             shape = RoundedCornerShape(20.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
         ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Icon(Icons.Default.CloudSync, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                        Column {
-                            Text("Automatic Supabase Sync", fontWeight = FontWeight.Medium)
-                            Text("Sync notes, budgets, & categories", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
-                    Switch(checked = isSupabaseSync, onCheckedChange = { isSupabaseSync = it })
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Button(
-                    onClick = onTriggerSupabaseSync,
-                    modifier = Modifier.fillMaxWidth().testTag("sync_now_btn"),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Icon(Icons.Default.Sync, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Sync Now with Supabase")
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Security Section
-        Text(text = "Security & Protection", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Icon(Icons.Default.Fingerprint, contentDescription = null)
-                        Text("App Lock & PIN Security", fontWeight = FontWeight.Medium)
-                    }
-                    Switch(checked = isPinLock, onCheckedChange = { isPinLock = it })
-                }
+            Column {
+                ListItem(
+                    headlineContent = { Text("Privacy Policy") },
+                    supportingContent = { Text("Learn how your local data remains 100% private") },
+                    leadingContent = { Icon(Icons.Default.PrivacyTip, contentDescription = null) },
+                    trailingContent = { Icon(Icons.Default.ChevronRight, contentDescription = null) },
+                    modifier = Modifier.testTag("privacy_policy_item")
+                )
+                HorizontalDivider()
+                ListItem(
+                    headlineContent = { Text("About Notes Expenses") },
+                    supportingContent = { Text("Version 2.0.0 • Offline First Notes App") },
+                    leadingContent = { Icon(Icons.Default.Info, contentDescription = null) },
+                    trailingContent = { Icon(Icons.Default.ChevronRight, contentDescription = null) },
+                    modifier = Modifier.testTag("about_app_item")
+                )
             }
         }
 
         Spacer(modifier = Modifier.height(88.dp))
     }
 }
+

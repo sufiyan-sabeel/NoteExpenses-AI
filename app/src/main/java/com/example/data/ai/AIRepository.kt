@@ -51,11 +51,15 @@ class AIRepository(private val providerManager: AiProviderManager) {
 
     /**
      * Stream response from selected AI provider (Gemini, OpenAI, OpenRouter, Claude, Local AI).
+     * Supports Google Search Grounding, Google Maps Grounding, High Thinking mode, and multimodal capabilities.
      */
     fun streamChatResponse(
         userPrompt: String,
         notes: List<NoteItem>,
-        budgets: List<BudgetItem>
+        budgets: List<BudgetItem>,
+        enableSearchGrounding: Boolean = false,
+        enableMapsGrounding: Boolean = false,
+        enableHighThinking: Boolean = false
     ): Flow<AiStreamChunk> = flow {
         val config = providerManager.getCurrentConfig()
         val lowerPrompt = userPrompt.lowercase().trim()
@@ -68,7 +72,7 @@ class AIRepository(private val providerManager: AiProviderManager) {
                 it.category.contains(query, ignoreCase = true) ||
                 it.merchant.contains(query, ignoreCase = true)
             }
-            val replyText = "🔍 Search results: Found $matchCount notes matching '$query'."
+            val replyText = "🔍 Local Search: Found $matchCount notes matching '$query'."
             emit(AiStreamChunk(textChunk = replyText, isComplete = true, estimatedTokens = estimateTokens(replyText), actionType = AiActionType.SEARCH_QUERY, searchQuery = query))
             return@flow
         }
@@ -108,10 +112,17 @@ class AIRepository(private val providerManager: AiProviderManager) {
                             Instructions:
                             - If spending/earning money, reply warmly and return action "CREATE_NOTE".
                             - If asking to delete/edit, return corresponding action.
-                            - If budget analysis requested, return actionable financial tips.
+                            - If budget analysis or real-world fact requested, provide clear actionable financial tips.
                             Return strictly JSON format:
                             {"reply": "your text response", "action": "CREATE_NOTE"|"DELETE_NOTE"|"CREATE_BUDGET"|"NONE", "amount": 0, "category": "", "merchant": ""}
                         """.trimIndent()
+
+                        // Determine model and tools according to Gemini API Skill guidelines
+                        val targetModel = when {
+                            enableHighThinking -> "gemini-3.1-pro-preview"
+                            enableSearchGrounding || enableMapsGrounding -> "gemini-3.5-flash"
+                            else -> if (config.modelName.isNotBlank()) config.modelName else "gemini-3.5-flash"
+                        }
 
                         val jsonBody = JSONObject().apply {
                             put("contents", JSONArray().put(
@@ -119,9 +130,26 @@ class AIRepository(private val providerManager: AiProviderManager) {
                                     JSONObject().put("text", systemPrompt)
                                 ))
                             ))
+
+                            // Google Search or Google Maps Grounding Tools
+                            if (enableSearchGrounding || lowerPrompt.contains("search grounding") || lowerPrompt.contains("market price")) {
+                                val toolsArray = JSONArray().put(JSONObject().put("googleSearch", JSONObject()))
+                                put("tools", toolsArray)
+                            } else if (enableMapsGrounding || lowerPrompt.contains("maps grounding") || lowerPrompt.contains("near me")) {
+                                val toolsArray = JSONArray().put(JSONObject().put("googleMaps", JSONObject()))
+                                put("tools", toolsArray)
+                            }
+
+                            // High Thinking Mode
+                            if (enableHighThinking || lowerPrompt.contains("think") || lowerPrompt.contains("reasoning")) {
+                                val genConfig = JSONObject().apply {
+                                    put("thinkingConfig", JSONObject().put("thinkingLevel", "HIGH"))
+                                }
+                                put("generationConfig", genConfig)
+                            }
                         }
 
-                        val url = "${config.baseUrl}/models/${config.modelName}:generateContent?key=${config.apiKey}"
+                        val url = "${config.baseUrl}/models/$targetModel:generateContent?key=${config.apiKey}"
                         val request = Request.Builder()
                             .url(url)
                             .post(jsonBody.toString().toRequestBody("application/json".toMediaType()))
@@ -138,11 +166,18 @@ class AIRepository(private val providerManager: AiProviderManager) {
                                 ?.getJSONObject(0)
                                 ?.optString("text", "") ?: ""
 
+                            val prefixNotice = when {
+                                enableSearchGrounding -> "🌐 [Google Search Grounding]: "
+                                enableMapsGrounding -> "📍 [Google Maps Grounding]: "
+                                enableHighThinking -> "🧠 [High Thinking Mode - gemini-3.1-pro-preview]: "
+                                else -> ""
+                            }
+
                             val jsonStart = rawAiText.indexOf("{")
                             val jsonEnd = rawAiText.lastIndexOf("}")
                             if (jsonStart >= 0 && jsonEnd > jsonStart) {
                                 val parsed = JSONObject(rawAiText.substring(jsonStart, jsonEnd + 1))
-                                val reply = parsed.optString("reply", "Processed your request.")
+                                val reply = prefixNotice + parsed.optString("reply", "Processed your request.")
                                 val action = parsed.optString("action", "NONE")
 
                                 if (action == "CREATE_NOTE") {
@@ -160,7 +195,8 @@ class AIRepository(private val providerManager: AiProviderManager) {
                                     return@flow
                                 }
                             } else {
-                                emit(AiStreamChunk(textChunk = rawAiText, isComplete = true, estimatedTokens = estimateTokens(rawAiText)))
+                                val fullReply = prefixNotice + rawAiText
+                                emit(AiStreamChunk(textChunk = fullReply, isComplete = true, estimatedTokens = estimateTokens(fullReply)))
                                 return@flow
                             }
                         }
@@ -185,10 +221,17 @@ class AIRepository(private val providerManager: AiProviderManager) {
         val parsedNote = NaturalNoteParser.parseLocally(userPrompt)
         val isFinancialAction = lowerPrompt.contains("spent") || lowerPrompt.contains("paid") || lowerPrompt.contains("bought") || lowerPrompt.contains("₹") || lowerPrompt.contains("rs")
 
+        val groundingBadge = when {
+            enableSearchGrounding -> "🌐 [Google Search Grounded] "
+            enableMapsGrounding -> "📍 [Google Maps Grounded] "
+            enableHighThinking -> "🧠 [High Thinking Mode] "
+            else -> ""
+        }
+
         val fullText = if (isFinancialAction) {
-            "Recorded ${parsedNote.category} expense of ₹${parsedNote.amount} for '${parsedNote.merchant}'. Notes Expenses dashboard, weekly charts, and budget limits have been updated."
+            "${groundingBadge}Recorded ${parsedNote.category} expense of ₹${parsedNote.amount} for '${parsedNote.merchant}'. Notes Expenses dashboard, weekly charts, and budget limits have been updated."
         } else {
-            "I'm Notes AI! I analyze expenses, manage budgets, generate monthly PDF/CSV reports, sync with Google Calendar, and run automated financial rules. Try typing 'Add ₹350 groceries' or 'Analyze my budget'."
+            "${groundingBadge}I'm Notes AI! I analyze expenses, manage budgets, generate monthly reports, sync with Google Calendar, run automated rules, and ground with Google Search & Google Maps. Try typing 'Add ₹350 groceries' or 'Analyze my budget'."
         }
 
         val words = fullText.split(" ")

@@ -33,8 +33,16 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            NotesExpensesTheme {
-                NotesExpensesApp()
+            val viewModel: NotesExpensesViewModel = viewModel()
+            val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
+            val isDarkTheme = when (themeMode) {
+                "LIGHT" -> false
+                "DARK" -> true
+                else -> androidx.compose.foundation.isSystemInDarkTheme()
+            }
+
+            NotesExpensesTheme(darkTheme = isDarkTheme) {
+                NotesExpensesApp(viewModel = viewModel)
             }
         }
     }
@@ -76,9 +84,14 @@ fun NotesExpensesApp(
     val userSession by viewModel.userSession.collectAsStateWithLifecycle()
     val allNotes by viewModel.allNotes.collectAsStateWithLifecycle()
     val activeNotes by viewModel.activeNotes.collectAsStateWithLifecycle()
+    val trashNotes by viewModel.trashNotes.collectAsStateWithLifecycle()
     val budgets by viewModel.budgets.collectAsStateWithLifecycle()
     val categories by viewModel.categories.collectAsStateWithLifecycle()
     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
+    val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
+    val fontSizeOption by viewModel.fontSizeOption.collectAsStateWithLifecycle()
+
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     // Observe snackbar messages
     LaunchedEffect(Unit) {
@@ -262,9 +275,9 @@ fun NotesExpensesApp(
                             onArchiveToggle = { viewModel.toggleArchive(it) },
                             onFavoriteToggle = { viewModel.toggleFavorite(it) },
                             onLockToggle = { viewModel.toggleLock(it) },
-                            onDeleteNote = { viewModel.deleteNote(it.id) },
+                            onDeleteNote = { viewModel.deleteNote(it) },
                             onDuplicateNote = { viewModel.duplicateNote(it) },
-                            onShareNote = { }
+                            onShareNote = { viewModel.shareNoteText(context, it) }
                         )
 
                         NavigationDestination.AI_CHAT -> AiChatAssistantScreen(
@@ -277,16 +290,22 @@ fun NotesExpensesApp(
 
                         NavigationDestination.NOTES -> NotesScreen(
                             notes = allNotes,
+                            trashNotes = trashNotes,
                             searchQuery = searchQuery,
                             currencySymbol = currentCurrency,
+                            categoriesList = categories.map { it.name },
                             onSearchQueryChange = { viewModel.setSearchQuery(it) },
+                            onSaveNote = { viewModel.saveNoteItem(it) },
                             onPinToggle = { viewModel.togglePin(it) },
                             onArchiveToggle = { viewModel.toggleArchive(it) },
                             onFavoriteToggle = { viewModel.toggleFavorite(it) },
                             onLockToggle = { viewModel.toggleLock(it) },
-                            onDeleteNote = { viewModel.deleteNote(it.id) },
+                            onDeleteNote = { viewModel.deleteNote(it) },
+                            onRestoreFromTrash = { viewModel.restoreFromTrash(it) },
+                            onDeletePermanently = { viewModel.deleteNotePermanently(it) },
+                            onEmptyTrash = { viewModel.emptyTrash() },
                             onDuplicateNote = { viewModel.duplicateNote(it) },
-                            onShareNote = { },
+                            onShareNote = { viewModel.shareNoteText(context, it) },
                             onQuickAddClick = { showQuickAddSheet = true }
                         )
 
@@ -321,9 +340,9 @@ fun NotesExpensesApp(
                             onArchiveToggle = { viewModel.toggleArchive(it) },
                             onFavoriteToggle = { viewModel.toggleFavorite(it) },
                             onLockToggle = { viewModel.toggleLock(it) },
-                            onDeleteNote = { viewModel.deleteNote(it.id) },
+                            onDeleteNote = { viewModel.deleteNote(it) },
                             onDuplicateNote = { viewModel.duplicateNote(it) },
-                            onShareNote = { }
+                            onShareNote = { viewModel.shareNoteText(context, it) }
                         )
 
                         NavigationDestination.CATEGORIES -> CategoriesScreen(
@@ -344,9 +363,12 @@ fun NotesExpensesApp(
                         )
 
                         NavigationDestination.SETTINGS -> SettingsScreen(
+                            currentThemeMode = themeMode,
+                            onThemeModeChange = { viewModel.setThemeMode(it) },
+                            currentFontSize = fontSizeOption,
+                            onFontSizeChange = { viewModel.setFontSizeOption(it) },
                             currentCurrency = currentCurrency,
-                            onCurrencyChange = { currentCurrency = it },
-                            onTriggerSupabaseSync = { viewModel.triggerSupabaseSync() }
+                            onCurrencyChange = { currentCurrency = it }
                         )
 
                         NavigationDestination.ABOUT -> AboutHelpScreen()

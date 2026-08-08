@@ -12,12 +12,26 @@ enum class BudgetPeriod {
     CUSTOM
 }
 
+data class ChecklistItem(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val text: String = "",
+    val isDone: Boolean = false
+)
+
+enum class NoteSortOption {
+    NEWEST,
+    OLDEST,
+    ALPHABETICAL,
+    COLOR
+}
+
 data class NoteItem(
-    val id: String,
-    val rawText: String,
-    val amount: Double,
-    val category: String,
-    val merchant: String,
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val title: String = "",
+    val rawText: String = "",
+    val amount: Double = 0.0,
+    val category: String = "Personal",
+    val merchant: String = "",
     val type: TransactionType = TransactionType.EXPENSE,
     val timestamp: Long = System.currentTimeMillis(),
     val tags: List<String> = emptyList(),
@@ -25,7 +39,12 @@ data class NoteItem(
     val isArchived: Boolean = false,
     val isFavorite: Boolean = false,
     val isLocked: Boolean = false,
-    val colorHex: String = "#303F9F"
+    val colorHex: String = "#FFFFFF",
+    val imageUri: String? = null,
+    val isChecklist: Boolean = false,
+    val checklistItems: List<ChecklistItem> = emptyList(),
+    val isTrash: Boolean = false,
+    val deletedTimestamp: Long = 0L
 )
 
 data class BudgetItem(

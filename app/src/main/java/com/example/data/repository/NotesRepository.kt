@@ -2,6 +2,7 @@ package com.example.data.repository
 
 import com.example.data.local.NoteDao
 import com.example.data.local.NoteEntity
+import com.example.data.model.ChecklistItem
 import com.example.data.model.NoteItem
 import com.example.data.model.TransactionType
 import com.example.data.parser.NaturalNoteParser
@@ -26,6 +27,10 @@ class NotesRepository(
         list.map { entityToModel(it) }
     }
 
+    val trashNotesFlow: Flow<List<NoteItem>> = noteDao.getTrashNotes().map { list ->
+        list.map { entityToModel(it) }
+    }
+
     suspend fun parseAndAddNote(rawText: String): NoteItem {
         val parsedNote = NaturalNoteParser.parseWithAiOrLocal(rawText)
         saveNote(parsedNote)
@@ -37,17 +42,53 @@ class NotesRepository(
         noteDao.insertNote(entity)
     }
 
-    suspend fun deleteNote(id: String) {
+    suspend fun moveToTrash(id: String) {
+        noteDao.moveToTrash(id)
+    }
+
+    suspend fun restoreFromTrash(id: String) {
+        noteDao.restoreFromTrash(id)
+    }
+
+    suspend fun deleteNotePermanently(id: String) {
         noteDao.deleteNoteById(id)
+    }
+
+    suspend fun emptyTrash() {
+        noteDao.emptyTrash()
     }
 
     suspend fun syncWithSupabase(notes: List<NoteItem>): Result<Int> {
         return supabaseManager.syncNotesToSupabase(notes)
     }
 
+    private fun serializeChecklist(items: List<ChecklistItem>): String {
+        return items.joinToString("\n") { "${if (it.isDone) "1" else "0"}|${it.id}|${it.text.replace("|", " ")}" }
+    }
+
+    private fun deserializeChecklist(raw: String): List<ChecklistItem> {
+        if (raw.isBlank()) return emptyList()
+        return raw.split("\n").mapNotNull { line ->
+            val parts = line.split("|")
+            if (parts.size >= 3) {
+                ChecklistItem(
+                    id = parts[1],
+                    isDone = parts[0] == "1",
+                    text = parts.subList(2, parts.size).joinToString("|")
+                )
+            } else if (parts.size == 2) {
+                ChecklistItem(
+                    isDone = parts[0] == "1",
+                    text = parts[1]
+                )
+            } else null
+        }
+    }
+
     private fun entityToModel(e: NoteEntity): NoteItem {
         return NoteItem(
             id = e.id,
+            title = e.title,
             rawText = e.rawText,
             amount = e.amount,
             category = e.category,
@@ -59,13 +100,19 @@ class NotesRepository(
             isArchived = e.isArchived,
             isFavorite = e.isFavorite,
             isLocked = e.isLocked,
-            colorHex = e.colorHex
+            colorHex = e.colorHex,
+            imageUri = e.imageUri,
+            isChecklist = e.isChecklist,
+            checklistItems = deserializeChecklist(e.checklistJson),
+            isTrash = e.isTrash,
+            deletedTimestamp = e.deletedTimestamp
         )
     }
 
     private fun modelToEntity(m: NoteItem): NoteEntity {
         return NoteEntity(
             id = m.id,
+            title = m.title,
             rawText = m.rawText,
             amount = m.amount,
             category = m.category,
@@ -77,7 +124,12 @@ class NotesRepository(
             isArchived = m.isArchived,
             isFavorite = m.isFavorite,
             isLocked = m.isLocked,
-            colorHex = m.colorHex
+            colorHex = m.colorHex,
+            imageUri = m.imageUri,
+            isChecklist = m.isChecklist,
+            checklistJson = serializeChecklist(m.checklistItems),
+            isTrash = m.isTrash,
+            deletedTimestamp = m.deletedTimestamp
         )
     }
 

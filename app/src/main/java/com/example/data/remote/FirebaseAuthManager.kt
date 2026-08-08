@@ -42,9 +42,9 @@ class FirebaseAuthManager {
         } else {
             UserSession(
                 uid = "guest_user_123",
-                email = "user@notesexpenses.app",
-                displayName = "Expense Tracker Guest",
-                isAuthenticated = false,
+                email = "offline@notesexpenses.app",
+                displayName = "Offline Notes User",
+                isAuthenticated = true,
                 isEmailVerified = true
             )
         }

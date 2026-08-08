@@ -211,13 +211,75 @@ fun M3NoteCard(
                     )
                 }
             } else {
-                Text(
-                    text = note.rawText,
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis
-                )
+                // Title (if present)
+                if (note.title.isNotBlank()) {
+                    Text(
+                        text = note.title,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                }
+
+                // Image Attachment Thumbnail (if present)
+                if (!note.imageUri.isNullOrBlank()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(110.dp)
+                            .padding(vertical = 4.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                    ) {
+                        coil.compose.AsyncImage(
+                            model = note.imageUri,
+                            contentDescription = "Note Thumbnail",
+                            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                }
+
+                // Checklist vs Content
+                if (note.isChecklist && note.checklistItems.isNotEmpty()) {
+                    Column(
+                        modifier = Modifier.padding(vertical = 4.dp),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        note.checklistItems.take(3).forEach { item ->
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (item.isDone) Icons.Default.CheckBox else Icons.Default.CheckBoxOutlineBlank,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = if (item.isDone) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = item.text,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    textDecoration = if (item.isDone) androidx.compose.ui.text.style.TextDecoration.LineThrough else null,
+                                    color = if (item.isDone) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                } else if (note.rawText.isNotBlank()) {
+                    Text(
+                        text = note.rawText,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Normal,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -234,7 +296,7 @@ fun M3NoteCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                if (note.amount > 0.0) {
                     Text(
                         text = if (note.type == TransactionType.INCOME) "+$currencySymbol${note.amount}" else "-$currencySymbol${note.amount}",
                         style = MaterialTheme.typography.titleLarge,
