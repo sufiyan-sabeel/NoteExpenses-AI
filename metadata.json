@@ -1,0 +1,6 @@
+{
+  "name": "Notes Expenses",
+  "description": "A minimalist personal finance tool that replaces complicated budgeting forms with a simple notes interface.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
